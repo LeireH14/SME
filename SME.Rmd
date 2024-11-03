@@ -1,0 +1,766 @@
+---
+title: "SME"
+author: "Leire Hernández Lecuona"
+date: "2024-10-30"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introducción
+En este Markdown de R se resumen algunas funciones útiles para el análisis y preprocesamiento de datos, incluyendo funciones de discretización, normalización y estandarización de variables, entre otros. Estas funciones están diseñadas para facilitar la exploración de los datos, tanto para atributos como para datasets y han sido creadas para la signatura de Software Matemático y Estadístico del máster Ingeniería Computacional y Sistemas Inteligentes de la UPV/EHU.
+
+## Funciones de discretización
+### Función para discretizar variables
+La siguiente función sirve para discretizar una variable. Para ello, se pueden utilizar tres métodos: el método *igual anchura*, el método *igual frecuencia* o directamente con los puntos de corte que se quieran utilizar. Para seleccionar el método, hay que utilizar el parámetro **method**:
+
+- **method = 1:** La función utilizará el método *igual anchura*
+- **method = 2:** La función utilizará el método *igual frecuencia* 
+
+El método por defecto de la función es el método igual anchura. Si se le pasa los números de corte a la función, se ignorará el tipo de método que se haya seleccionado y se utilizarán los puntos de corte elegidos.
+
+Para los métodos *igual anchura* e *igual frecuencia*, será necesario pasarle a la función el número de intervalos que se quiere. Para ello se utilizará el parámetro **num.bins**.
+
+Esta función devuelve una lista con dos elementos:
+
+- **variable:** Es la variable discretizada. Se devuelve una matriz y los valores son una I y el numero de intervalo al que pertenece. Por ejemplo, "I3". Eso significaría que ese valor pertenece al intervalo número 3.
+- **cortes:**  Es la lista de puntos de corte, que se devuelven para poder ser usado posteriormente para discretizar mas valores
+
+Si se utiliza el método *igual frecuencia* pero no se utiliza un número de intervalos multiplo a la cantidad de elementos en la variable, aparecerá un aviso. En los intervalos no habrá la misma cantidad de elementos, los primeros intervalos tendrán un elemento más.
+
+En todos los casos, los puntos de corte devueltos nos indican los números que forman los límites de los intervalos. El número del límite inferior no entra dentro del intervalo. Por ejemplo, los límites del segundo intervalo serían el valor de la segunda fila (este no incluido) y el valor de la tercera fila (este incluido) del vector o matriz de puntos de corte.
+
+Tanto la matriz discretizada como los puntos de corte devueltos están en formato matriz.
+
+```{r discretize variable}
+discretize_v <- function(x, num.bins = NULL, method = 1, cut.points = NULL) {
+  # Se convierte la variable x en un vector (as.matrix) y se crea un vector con 0 para el atributo discretizado
+  atributo <- as.matrix(x)
+  atributo_discretizado <- matrix(0, nrow = nrow(atributo), ncol = 1)
+  
+  # Si cut.points está vacío, se tiene en cuenta el párametro "method"
+  if (is.null(cut.points)){
+    
+    # Vector de ceros para guardar los puntos de corte
+    cortes <- matrix(0, nrow = as.numeric(num.bins+1), ncol = 1)
+    
+    # Método igual anchura (uniformemente distribuidos en el rango de los valores)
+    if (method == 1){
+      
+      #Se calcula el valor entre los intervalos
+      valor_min <- min(atributo)
+      valor_max <- max(atributo)
+      valor_intervalo <- (valor_max - valor_min) / num.bins
+      
+      # Se calculan los cortes con esos intervalos
+      for (i in 1:num.bins) {
+        cortes[i+1,] <- valor_min + i * valor_intervalo
+      }
+      
+      # Se añaden -infinito e infinito al principio y final de los cortes para poder utilizarlo con futuros datos
+      cortes[1,] <- -Inf
+      cortes[num.bins+1,]<-Inf
+      
+      # Si el valor de la variable está dentro del intervalo, se le asigna ese intervalo (I + número de intervalo)
+      for (i in 1:num.bins) {
+        for (n in 1:nrow(atributo_discretizado)){
+          if(atributo[n,] > cortes[i] & atributo[n,] <= cortes[i+1]){
+            atributo_discretizado[n,] <- paste("I", i, sep = "")
+            }
+          }
+        }
+      }
+
+    # Método igual frecuencia (misma cantidad de valores en los intervalos)
+    else if (method == 2) {
+      
+      # Calcular el valor entero y el del residuo de la división entre la cantidad de elementos y la cantidad de intervalos (para saber si son mútliplos o no)
+      valor_entero <- nrow(atributo)%/%num.bins
+      valor_residuo <- nrow(atributo)%%num.bins
+      
+      # Ordenar los valores del atributo
+      valores_ordenados <- order(atributo)
+      
+      cont <- 0
+      
+      # Se crea un vector de 1s para guardar la secuencia de índices de los datos que servirá para dividirlos después en intervalos
+      seq <- matrix(1, nrow = num.bins + 1, ncol = 1)
+      
+      # Se le dan valores a la secuencia: El primer valor será el índice 1 (el valor más pequeño)
+      # Se le irá sumando el valor entero de la división, que será la cantidad de elementos que habrá en cara intervalo
+      # Se consiguen los índices que definen los intervalos
+      for (i in 1:num.bins){
+        seq[i+1,] <- seq[i,] + valor_entero
+      }
+      
+      # Si la cantidad de intervalso y la cantidad de elementos en la variable no son múltiplos, se imprimirá una advertencia. 
+      # Los primeros "valor_residuo" intervalos tendrán un elemento más que el resto
+        if (valor_residuo!=0){
+          print("¡Cuidado! El número de elementos en la variable no es multiplo de la cantidad de intervalos")
+          
+          # Se calcula la nueva sequencia para que los primeros intervalos tengan un elemento más
+           for (res in 1:valor_residuo){
+            seq[(res+1):nrow(seq),] <- seq[(res+1):nrow(seq),] + 1
+        }
+      }
+      
+      for (i in 1:(nrow(seq)-1)){
+        cont <- cont + 1
+        
+        # Se calculan los índices de los elementos para cada intervalo
+        indices<-valores_ordenados[seq[i,]:(seq[i+1,]-1)]
+        
+        # A los valores con esos índices se les asigna ese intervalo
+        atributo_discretizado[indices] <- paste("I", cont, sep = "")
+            
+        # Se guarda el valor máximo del intervalo actual como un punto de corte
+        max_valor <- max(atributo[indices])
+        cortes[cont+1,] <- max_valor
+        }
+      
+      # Se les agrega -infinito e infinito al principio y final
+      cortes[nrow(cortes),1] <- Inf
+      cortes[1,] <- -Inf
+  }
+
+    # Si se le dá a la función los puntos de corte, se utiliza ese dato (se ignora el método seleccionado)
+    else{
+      cut.points <- as.matrix(cut.points)
+      
+      # Se crea una matriz de 0s para adaptar los cortes devueltos
+      cortes <- matrix(0, nrow = nrow(cut.points)+2, ncol = 1)
+      
+      # Se añade -infinito e infinito
+      cortes[1] <- -Inf
+      cortes[nrow(cut.points)+2] <- Inf
+    
+      # Se añaden los puntos de corte
+      for(c in 1:nrow(cut.points)){
+        cortes[c+1]<-cut.points[c]
+      }
+  
+      # Con esos puntos de corte, se le asigna a cada valor un intervalo
+      for (i in 1:nrow(cortes)) {
+        for (n in 1:nrow(atributo_discretizado)){
+          if(atributo[n,] > cortes[i] & atributo[n,] <= cortes[i+1]){
+            atributo_discretizado[n,] <- paste("I", i, sep = "")
+          }
+        }
+      }
+    }
+  }
+  return(list(variable = atributo_discretizado, cortes = cortes))
+}
+```
+
+Ejemplo de discretización de una variable usando el método de *igual anchura* con 3 intervalos:
+```{r discretize v result 1}
+variable <-sample(1:10, 10)
+discretize_v(variable, num.bins = 3, method = 1)
+```
+
+Ejemplo de discretización de una variable usando el método de igual frecuencia con 4 intervalo:
+```{r discretize v result 2}
+discretize_v(variable, num.bins = 4, method = 2)
+```
+
+Sale el aviso porque el número de intervalos no es múltiplo al número de elementos. 
+
+## Función para discretizar datasets
+Para discretizar un dataset se utilza la función implementada para discretizar una variable. En este caso se obtiene la matriz discretizada por columnas y los puntos de corte utilizados en cada columna. Los puntos de corte se interpretan de la misma forma que en el caso anterior.
+
+```{r discretize dataset}
+discretize_dataset <- function(x, num.bins = NULL, method = 1, cut.points = NULL) {
+  dataset <- as.matrix(x)
+  
+  # Se crea una matriz de 0s para guardar los valores del dataset discretizado y de los cortes
+  dataset_discretizado <- matrix(0, nrow = nrow(dataset), ncol = ncol(dataset))
+  cortes <- matrix(0, nrow = (num.bins + 1), ncol=ncol(dataset))
+
+  # La discretización se hace por columnas
+  for (l in 1:ncol(dataset)){ 
+    
+    # Se calcula el atributo (la columna) que se va a discretizar
+    atributo <- as.matrix(dataset[,l])
+    
+    # Se utiliza la función para discretizar variables para conseguir los intervalos y los puntos de corte de la columna actual
+    resultado <- discretize_v(atributo, num.bins = num.bins, method = method, cut.points = cut.points)
+    dataset_discretizado[,l] <- resultado$variable
+    cortes[,l] <- resultado$cortes
+  }
+  return(list(dataset_discretizado, cortes))
+}
+```
+
+Discretización usando el método de igual anchura con 3 intervalos
+```{r discretize dataset result 1}
+x <- data.frame(V1 = sample(1:100, 10, replace = TRUE),
+V2 = runif(10, min = 0, max = 1),
+V3 = rnorm(10, mean = 50, sd = 10))
+
+discretize_dataset(x, num.bins = 3, method = 1)
+```
+
+Discretización usando el método de igual frecuencia con 5 intervalos
+```{r discretize dataset result 2}
+discretize_dataset(x, num.bins = 5, method = 2)
+```
+
+## Función para calcular métricas para los atributos de un dataset
+
+Esta función calcula las métricas para los atributos de un dataset. Esta función reconoce el tipo de atributo y, actuando en base a eso, calcula la varianza y AUC para las variables contínuas y la entropía para las discretas. En el caso del AUC, el dataset debe ser supervisado, por lo que es necesario especificar una variable clase binaria con la que evaluar el AUC de los atributos numéricos (en formato booleano). El parámetro que recogerá esa clase binaria es *clase_bin*. Esta función tiene como parámetro de entrada, aparte de la clase binaria para el AUC, el dataset del que se quieren calcular las métricas y devuleve una lista con los resultados de cada métrica:
+
+- **$varianza:** Devuelve la varianza y el número de columna del dataset al que pertenece esa métrica. Para acceder al valor de la varianza hay que utilizar $value, y para acceder al número de columna, $col.
+- **$auc:** Devuelve el AUC y, al igual que en el caso de la varianza, el número de columna del dataset. En el caso del AUC, se devuelve lel ratio de falsos positivos (FPR) y verdaderos positivos(TPR).
+- **$entropy** Devuelve la entropía y, al igual que en los otros dos casos, el número de columna al que pertenece. 
+
+```{r metrics}
+metrics <- function(dataset, clase_bin){
+  # Se crean vectores vacíos para guardar los resultados de las métricas
+  v <- c() # Para guardar las varianzas
+  a <- c() # Para los AUC
+  e <- c() # Para la entropía
+  
+  # Se crean vectores vacíos para guardar los números de columna al que pertenecen las métricas
+  colv <- c() # Para las columnas de las varianzas
+  cole <- c() # Para los de la entropía
+  cola <- c() # Para los del AUC
+
+  # Se calcularán las métricas por columna: atributo = columna actual
+  for (j in 1:ncol(dataset)) {
+    atributo <- as.matrix(dataset[,j])
+    
+    # Si la clase de dato es "integer" o "factor" (variables contínuas), se calculará el AUC y la varianza
+    if (atributo[1,] - as.integer(atributo[1,]) !=0){
+      
+      # Se utiliza la función para calcular la varianza implementada más adelante y se cuarda el resultado en el vector
+      v <- c(v, varianzas_function(atributo))
+      
+      # Se guarda el número de columna en el vector
+      colv <- c(colv, j)
+      
+      # Se crea la matriz con el atributo y la clase binaria para pasársela a la función implementada más adelante para calcular el AUC
+      data_auc <- matrix(0, nrow = nrow(atributo), ncol = 2)
+      data_auc[,1] <- atributo
+      data_auc[,2] <- as.matrix(clase_bin)
+      
+      # Se calcula el AUC y se guarda en el vector
+      a <- c(a, auc_function(data_auc)$AUC)
+      
+      # Se guarda el número de columna
+      cola <- c(cola, j)
+    }
+    
+    # Si la clase de datos es discreta, se calculará la entropía
+    else{
+      
+      # Se calcula la entroía con la funciónimplementada más adelante y se guarda el valor en el vector
+      e <- c(e, entropy_function(atributo))
+      
+      # Se guarda el número de columna
+      cole <- c(cole, j)
+    }
+    
+    # Se crean listas con las métricas calculadas y sus columnas
+    entropy <- list(value = e, col = cole)
+    auc <- list(value = a, col = cola)
+    varianza <- list(value = v, col = colv)
+
+  }
+  return(list(varianza = varianza, auc = auc, entropy = entropy))
+}
+
+
+# Función para calcular la varianza
+varianzas_function <- function(atributo) {
+
+  # Calcular la media de la columna
+  media <- sum(atributo) / length(atributo)
+
+  sum_square <- 0
+  
+  # Calcular la suma de los cuadrados de las diferencias con la media
+  for (i in 1:length(atributo)) {
+    sum_square <- sum_square + (atributo[i] - media)^2
+  }
+
+  # Calcular la varianza
+  varianza <- sum_square / (length(atributo) - 1)
+
+  return(varianza)
+}
+
+
+# Función para calcular la entropía
+entropy_function <- function(x) {
+  
+  # Se consiguen los valores únicos y la cantidad de elementos en la variable (n)
+  valores <- unique(x)
+  n <- length(x)
+  
+  # Se crea un vector de 0s para guarar las probabilidades
+  probabilidades <- matrix(0, nrow = length(valores), ncol = 1)
+
+  # Se calcula las probabilidad de cada valor único (el porcentaje de ese elemento en la variable)
+  for (i in 1:length(valores)) {
+    c <- 0
+    for (j in 1:n) {
+      if (x[j] == valores[i]) {
+        c <- c + 1
+      }
+    }
+    probabilidades[i] <- c / n
+  }
+
+  # Se calcula la entropía
+  entropia <- 0
+  for (p in probabilidades) {
+    entropia <- entropia - p * (log(p) / log(2))
+  }
+  return(entropia)
+}
+
+
+# Función para calcular el AUC
+auc_function <- function(dataset) {
+  
+  # Ordenar el dataset (la primera columna con los valores de la variable)
+  dataset_ordenada <- dataset[order(dataset[,1], decreasing = TRUE), ]
+   
+  # Calcular la cantidad de positivos (sumando la cantidad de TRUE) y la cantidad de negativos (FALSE)
+  num_positivos <- sum(dataset_ordenada[,2] == TRUE)
+  num_negativos <- sum(dataset_ordenada[,2] == FALSE)
+
+  TP <- 0
+  FP <- 0
+  TPRs <- c()
+  FPRs <- c()
+
+  # Se calcula la media de la variable. Los elementos mayores que la media serán considerados como positivos y los menores como negativos
+  media <- sum(dataset_ordenada[,0])/nrow(dataset_ordenada)
+  
+  for (i in 1:nrow(dataset_ordenada)) {
+    # Se calcula la cantidad de true positives (los elementos predichos como TRUE y que son en realdiad TRUE)
+    if (dataset_ordenada[i, 1] >= media){
+      if (dataset_ordenada[i, 2] == TRUE) {
+        TP <- TP + 1
+      }
+    # Se calcula la cantidad de false positives (los elementos predichos como TRUE y que son en realdiad FALSE)
+      else {
+        FP <- FP + 1
+      }
+    }
+
+    # Se calcula el ratio de los true positives y de los false positives
+    TPR <- TP / num_positivos
+    FPR <- FP / num_negativos
+  
+    TPRs <- c(TPRs, TPR)
+    FPRs <- c(FPRs, FPR)
+  }
+
+  # Calcular el AUC usando el método del trapecio: sumar al AUC anterior la base (el ratio de falsos positivos) * la altura (el ratio del verdadero positivo)
+  AUC <- 0
+  for (i in 2:length(TPRs)) {
+    base <- FPRs[i] - FPRs[i - 1]
+    altura <- (TPRs[i] + TPRs[i - 1]) / 2
+    AUC <- AUC + base * altura
+  }
+  return(list(TPR = TPRs, FPR = FPRs, AUC = AUC))
+ }
+```
+
+Ejemplo de uso para la función metrics:
+```{r metrics results}
+df <- data.frame(
+continua1 = c(1.5, 2.3, 3.1, 4.6, 5.8),
+continua2 = c(10.2, 15.6, 20.1, 25.5, 30.0),
+discreta1 = c(1, 2, 3, 4, 5))
+clase <- c(TRUE, TRUE, FALSE, TRUE, FALSE)
+
+metrics(df, clase_bin = clase)
+```
+
+## Normalización y estandarización de variables y datasets
+### Normalización de una variable
+Esta función utiliza el método máx-min para normalizar una variable. El parámetro de entrada es la variable que se quiere normalizar y la función devuelve esa variable normalizada, con valores entre 0 y 1 en formato matriz. 
+```{r normalize variable}
+# Función para normalizar una variable
+normalizar_variable <- function(variable) {
+  
+  # Solo se normaliza la variable si es numerica
+  if (class(variable) == "numeric"){
+    
+    # Se normaliza la variable utilizandoel método max - min
+    variable_normalizada <- as.matrix(variable - min(variable))/(max(variable - min(variable)))
+  }
+  return (variable_normalizada)
+}
+```
+
+Ejemplo de uso de la función para normalizar una variable:
+```{r normalize variable results}
+variable <- c(1.5, 2.3, 3.1, 4.6, 5.8)
+
+normalizar_variable(variable)
+```
+
+### Normalización de un dataset
+Esta función normaliza un dataset por columnas. Para ello utiliza la función implementada en la sección anterior. El parámetro de entrada es el dataset que se quiere normalizar y devuelve una matriz con los valores del dataset normalizados con el método max-min.
+```{r normalize dataset}
+# Función para normalizar un dataset
+normalizar_dataset <- function(dataset) {
+  
+  # Se hace una copia del dataset que se quiere normalizar
+  dataset_normalizado <- dataset
+  for (j in 1:length(dataset)) {
+      
+    # se calcula la variable normalizada con la función implementada anteriormente y se guarda en la columna actual
+    dataset_normalizado[,j] <- normalizar_variable(dataset[,j])
+  }
+  return(dataset_normalizado)
+}
+```
+
+Ejemplo de uso de la función para normalizar un dataset:
+```{r normalize dataset results}
+df <- data.frame(
+V1 = c(1.5, 2.3, 3.1, 4.6, 5.8),
+V2 = c(10.2, 15.6, 20.1, 25.5, 30.0),
+V3 = c(1.1, 2.2, 1.3, 1.4, 0.95))
+
+normalizar_dataset(df)
+```
+
+### Estandarización de una variable
+Esta función resta la media de una variable a todos sus elementos y los divide por la desviación estandar para estandarizar una variable. El parámetro de entrada es la variable que se quiere estandarizar y la función devuelve esa variable estandarizada en formato matriz/vector.
+```{r estandarizar variable}
+# Función para estandarizar una variable
+estandarizar_variable <- function(variable) {
+  
+  # Solo se estandarizan las variables numéricas
+  if (class(variable) == "numeric"){
+    
+    # Se estandariza la variable eliminando a cada elemento la media y dividiéndolo por la desviación estandar
+    variable_estandarizada <- (variable - mean(variable)) / sqrt(sum((variable - mean(variable))^2))
+  }
+  return (as.matrix(variable_estandarizada))
+}
+```
+
+Ejemplo de uso de la función para estandarizar una variable:
+```{r resultados estandarizar variable}
+variable <- c(1.5, 2.3, 3.1, 4.6, 5.8)
+
+estandarizar_variable(variable)
+```
+
+### Estandarización de un dataset
+Esta función sirve para estandarizar un dataset completo. Para ello, en este caso también se utiliza la función utilizada para estandarizar una única variable. Esta función también coge la matriz a estandarizar y la devuelve en formato mariz.
+```{r estandarizar dataset}
+# Función para estandarizar un dataset
+estandarizar_dataset <- function(dataset) {
+  
+  # Se hace una copia del dataset que se quiere estandarizar
+  dataset_estandarizado <- dataset
+  
+  for (j in 1:length(dataset)) {
+    
+    # Se estandariza la columna del dataset utilizando la función implementada anteriormente
+    dataset_estandarizado[,j] <- estandarizar_variable(dataset[,j])
+  }
+  return(dataset_estandarizado)
+}
+```
+
+Ejemplo de uso de la función para estandarizar un dataset completo:
+```{r estandarizar dataset results}
+df <- data.frame(
+V1 = c(1.5, 2.3, 3.1, 4.6, 5.8),
+V2 = c(10.2, 15.6, 20.1, 25.5, 30.0),
+V3 = c(1.1, 2.2, 1.3, 1.4, 0.95))
+
+estandarizar_dataset(df)
+```
+
+## Filtrado de variables en base a las métricas entropía, AUC y varianza
+Esta función filtra un dataset en base a una métrica y una condición seleccionadas. Para ello, la función recibe los siguienes parámetros de entrada: 
+- **dataset:** El dataset que se quiere filtrar.
+- **clase_bin:** Para calcular el AUC es necesario especificar una variable clase binaria con la que evaluar el AUC, por lo que este parámetro recoge esa clase binaria en formato booleano.
+- **metric:** La métrica que se quiera utilizar para filtrar el dataset. Hay tres opciones: la entropía (metric = "entropia"), la varianza (metric = "varianza") y AUC (metric = "AUC").
+- **condition:** La condición que se quiera que las variables cumplan. Por ejemplo, "=0.5" o "<4". La condición tiene que ser formato caracter y primero tiene que ir la operación matemática y después el valor. Si se quiere filtrar en base a un intervalo de valores, se aplicará dos veces esta función. Un ejemplo de esto sería filtrar el dataset y quedarse solo con las variables que tengan una entropía mayor que 2 y menor que 5. Para ello, primero se aplicará la función *dataset_filt <- filtrar_dataset(dataset, metric = "entropia", condition = ">2")* y después, *filtrar_dataset(dataset_filt, metric = "entropia", condition = "<5")*. 
+
+El valor por defecto en el parámetro *métrica* es "entropía" y la condición por defecto es ">1". 
+
+Está función solo devolverá las variables que cumplan la condición. Si se elige la métrica entropía, solo se devolverán las variables que cumplan la condición establecida y que sean discretas. En el caso de elegir la varianza o el AUC, solo se devolverán las variables que sean contínuas y que cumplan la condición. Si no hay variables que cumplan la condición o no hay variables del tipo que cada métrica exige, se devolverá una matriz vacía.
+
+```{r filtrado}
+# Función para filtrar un dataset en base a una métrica y una condición
+filtrar_dataset <- function (dataset, clase_bin = NULL, metric = "entropia", condition = ">1"){
+  
+  # Se divide la condición (string) por carácteres
+  condition <- strsplit(condition,"")
+  
+  # Se genera un operador matemático con el primer caracter
+  operador <- match.fun(condition[[1]][1])
+  
+  # Se consigue el valor de la condición con el segundo caracter y se convierte en número
+  valor <-  as.numeric(paste(condition[[1]][2:length(condition[[1]])], collapse = ""))
+  
+  # Se calculan las métricas con la función implementada anteriormente
+  results <- metrics(dataset, clase_bin)
+  
+  columnas <- c()
+  count <- 1
+
+  # Si la métrica elegida es la entropía:
+  if (metric == "entropia"){
+    
+    # Se guarda las entropías calculadas y sus columnas
+    entropias <- results$entropy$value
+    col <- results$entropy$col
+    
+    # Por cada valor de entropía (cantidad de variables discretas) se ve si cumple la condición establecida
+    for (e in entropias){
+      if (operador(e, valor)){
+        
+        # Se guardan solo las columnas que cumplan la condición
+        columnas <- c(columnas, col[count])
+      }
+      # Se sigue un contador para saber qué columna cumplen la condición
+      count <- count + 1
+    }
+  }
+
+  # Si la métrica elegida es el AUC
+  else if (metric == "AUC"){
+    
+    # Se guardan los resultados del AUC y sus columnas
+    AUC <- results$auc$value
+    col <- results$auc$col
+    
+    # Por cada AUC calculado, se ve si cumple la condición establecida
+    for (a in AUC){
+      if (operador(a, valor)){
+        
+        # Se guardan solo las columnas que cumplen la condición
+        columnas <- c(columnas, col[count])
+      }
+      count <- count + 1
+    }
+  }
+  
+  # Si la métrica elegida es la varianza 
+  else if (metric == "varianza"){
+    
+    # Se guardan los resultados de las varianzas y las columnas
+    varianza <- results$varianza$value
+    col <- results$varianza$col
+    
+    # Por cada varianza se ve si cumplen la condición y se guaran las columnas de las que la cumplen
+    for (v in varianza){
+      if (operador(v, valor)){
+        columnas <- c(columnas, col[count])
+      }
+      count <- count + 1
+    }
+  }
+  
+  # Se genera un dataset filtrado con las columnas de las que se ha calculado la métrica y que cumplan la condición
+  dataset_filtrado <- as.matrix(dataset[,columnas])
+
+  return(dataset_filtrado)
+}
+```
+
+Ejemplo de la utilización de la función filtrar_dataset(), filtrando las variables para solo tener las que tengan un AUC mayor a 1:
+```{r filtrado resultados}
+df <- data.frame(
+V1 = c(1.5, 2.3, 3.1, 4.6, 5.8),
+V2 = c(10.2, 15.6, 20.1, 25.5, 30.0),
+V3 = c(1, 2, 3, 4, 5))
+clase <- c(TRUE, TRUE, FALSE, TRUE, FALSE)
+
+filtrar_dataset(df, clase_bin = clase, metric = "AUC", condition = ">0.1")
+```
+
+
+## Cálculo de la correlación
+Esta función calcula la correlación (información mutua en el caso de variables categóricas) por pares entre las variables de un dataset. La función considera de que tipo es cada variable y actúa en base a ello.
+
+Para ello, la función recoge como parámetro de entrada el dataset del que se quiera calcular la matriz de correlación o información mútua. Devuelve una matriz con esos resultados.
+```{r correlación}
+# Función para calcular la correlación y la información mútua
+calcular_correlacion_mutua <- function(dataset) {
+  n <- ncol(dataset)
+  
+  # Se crea una matriz de 0s para guardar los resultados
+  correlacion_matriz <- matrix(0, ncol = n, nrow = n)
+  colnames(correlacion_matriz) <- names(dataset)
+  rownames(correlacion_matriz) <- names(dataset)
+
+  for (i in 1:n) {
+    for (j in i:n) {
+      if (class(dataset[[i]])=="numeric" && class(dataset[[j]])=="numeric") {
+        
+        # Se calcula la correlación de Pearson para variables continuas con la función creada más adelante
+        correlacion_matriz[i, j] <- calcular_pearson(dataset[[i]], dataset[[j]])
+        
+      } else if (class(dataset[[i]])=="factor" && class(dataset[[j]])=="factor") {
+        
+        # Se calcula la información mutua para variables categóricas con la función creada más adelante
+        correlacion_matriz[i, j] <- informacion_mutua(dataset[[i]], dataset[[j]])
+      } 
+      
+      # La matriz es simétrica, por lo que se rellenan los datos faltantes de esa forma
+      correlacion_matriz[j, i] <- correlacion_matriz[i, j]  
+    }
+  }
+  return(correlacion_matriz)
+}
+
+# Función para calcular la información mutua
+informacion_mutua <- function(x, y) {
+  
+  # Se obtienen los valores únicos para la x y la y
+  valores_x <- unique(x)
+  valores_y <- unique(y)
+  
+  n <- length(x)
+  info_mutua <- 0
+
+  # Se calculan las frecuencias conjuntas y marginales
+  for (vx in valores_x) {
+    for (vy in valores_y) {
+      p_xy <- sum(x == vx & y == vy) / n
+      p_x <- sum(x == vx) / n
+      p_y <- sum(y == vy) / n
+      
+      # Se calcula la información mutua
+      info_mutua <- info_mutua + p_xy * log2(p_xy / (p_x * p_y)+ 1e-20) # Se suma un pequeño número para evitar indeterminacioens
+    }
+  }
+  return(info_mutua)
+}
+
+# Función para calcular la correlación de Pearson
+calcular_pearson <- function(x, y) {
+  n <- length(x)
+  
+  # Se calcula la media de x e y
+  media_x <- sum(x) / n
+  media_y <- sum(y) / n
+  
+  # Se calcula la covarianza entre x e y
+  covarianza <- sum((x - media_x) * (y - media_y))
+  
+  # Se calcula la desviación estandar de x e y
+  desviacion_x <- sqrt(sum((x - media_x)^2))
+  desviacion_y <- sqrt(sum((y - media_y)^2))
+
+  # Se calcula la correlación entre x e y 
+  correlacion <- covarianza / (desviacion_x * desviacion_y)
+  return(correlacion)
+}
+```
+
+Ejemplo de uso de la función de correlación/información mútua:
+```{r correlación resultados}
+df <- data.frame(
+V1 = rnorm(100),
+V2 = rnorm(100),
+V3 = factor(sample(1:3, 100, replace = TRUE)),
+V4 = factor(sample(1:4, 100, replace = TRUE)))
+
+calcular_correlacion_mutua(df)
+```
+
+## Plots para el AUC y para las matrices de correlación/información mutua
+En este apartado se muestran dos funciones de visualización: la primera para visualizar la curva ROC y la segunda para visualizar la matriz de correlación/ información mútua de una variable. Para ambos casos se necesita instalar y cargar el paquete ggplot2. Si no está instalado, la función lo instalará.
+
+### Plot para el AUC
+Esta función plotea la curva ROC. Para ello se utilza la función para calcular el AUC implementada en el apartado de métricas. Se le debe pasar a la función la variable del que se quiere visualizar la curva y la variable clase binaria con la que evaluar el AUC.
+```{r plot auc}
+# Función para visualizar la curva ROC
+plot_auc <- function(atributo, clase_bin){
+
+  # Instala y carga ggplot2 si es necesario
+  if(!require(ggplot2)) install.packages("ggplot2")
+  library(ggplot2)
+
+  # Se crea un dataset con los valores de la variable y la clase binaria
+  data_auc <- matrix(0, nrow = nrow(as.matrix(atributo)), ncol = 2)
+  data_auc[,1] <- atributo
+  data_auc[,2] <- as.matrix(clase_bin)
+  
+  # Se calcula el AUC con la función implementada anteriormente
+  resultado <- auc_function(data_auc)
+  
+  # Se calcula la curva ROC (el valor de X es FPR y el valor de y el TPR)
+  roc_data <- data.frame(FPR = resultado$FPR, TPR = resultado$TPR)
+
+  # Se plotea la curva ROC
+  ggplot(roc_data, aes(x = FPR, y = TPR)) +
+    geom_line(color = "blue") +
+    ylim(0, 1) +
+    labs(title = "Curva ROC", x = "Tasa de Falsos Positivos (FPR)", y = "Tasa de Verdaderos Positivos (TPR)")
+}
+```
+
+Ejemplo de uso de la función para plotear la curva ROC:
+```{r resutlados auc}
+atributo = c(1.5, 2.3, 3.1, 4.6, 5.8)
+clase <- c(TRUE, TRUE, FALSE, TRUE, FALSE)
+
+plot_auc(atributo, clase_bin = clase)
+```
+
+
+### Plot para las matrices de correlación/información mutua
+Esta función plotea la correlación/información mútua entre los elementos de una variable. Para ello se utilza la función implementada para ello en uno de los apartados anteriores. Esta función crea una especie de mapa de calor, donde las variables representadas de forma más roja son las más correlacionadas. También se muestra la correlación de forma numérica. 
+
+Se le debe pasar a la función la variable del que se quiere visualizar el mapa de correlación/información mútua.
+```{r plot info}
+plot_info_mutua <- function(df){
+  # Se instala y carga el paquete ggplot2 si es necesario
+  if(!require(ggplot2)) install.packages("ggplot2")
+  library(ggplot2)
+
+  # Se calcula la matriz de correlación/información mútua con la función implementada anteriormente
+  correlation_matrix <- calcular_correlacion_mutua(df)
+
+  # Se crea un dataframe vacío para reorganizar los datos a un formato adecuado para plotearlo
+  cor_mutua_df <- data.frame(NULL)
+
+# Se rellena el data frame con los datos de la matriz,
+  for (i in 1:nrow(correlation_matrix)) {
+    for (j in 1:ncol(correlation_matrix)) {
+      cor_mutua_df <- rbind(cor_mutua_df, data.frame(
+        V1 = rownames(correlation_matrix)[i], 
+        V2 = colnames(correlation_matrix)[j],
+        val = correlation_matrix[i, j]))
+    }
+  }
+
+  # Se plotea la matriz de correlación/información mútua
+  ggplot(data = cor_mutua_df, aes(x = V1, y = V2, fill = val)) +
+    geom_tile(color = "white") +
+    scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+    labs(title = "Matriz de Correlación e Información Mutua")
+}
+```
+
+Ejemplo de uso de la función para visualizar la correlación/información mútua entre los elementos de la variable:
+```{r resultados plot info}
+df <- data.frame(
+V1 = rnorm(100),
+V2 = rnorm(100),
+V3 = factor(sample(1:3, 100, replace = TRUE)),
+V4 = factor(sample(1:4, 100, replace = TRUE)))
+
+plot_info_mutua(df)
+```
